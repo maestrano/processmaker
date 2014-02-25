@@ -74,6 +74,9 @@ function transactionLog($transactionName){
 // Defining the PATH_SEP constant, he we are defining if the the path separator symbol will be '\\' or '/'
 define( 'PATH_SEP', '/' );
 
+// Force document root path for MAMP
+$_SERVER['DOCUMENT_ROOT'] = '/Users/arnaudlachaume/Sites/apache-hosts/processmaker/workflow/public_html';
+
 // Defining the Home Directory
 $realdocuroot = str_replace( '\\', '/', $_SERVER['DOCUMENT_ROOT'] );
 $docuroot = explode( PATH_SEP, $realdocuroot );
@@ -809,6 +812,20 @@ if (! $avoidChangedWorkspaceValidation && isset( $_SESSION['WORKSPACE'] ) && $_S
     die();
 }
 
+// Hook:Maestrano
+// Load Maestrano
+require PATH_HOME . 'public_html/maestrano/app/init/base.php';
+$maestrano = MaestranoService::getInstance();
+// Require authentication straight away if intranet
+// mode enabled
+if ($maestrano->isSsoIntranetEnabled()) {
+  if (!isset($_SESSION)) session_start();
+  if (!$maestrano->getSsoSession()->isValid()) {
+    header("Location: " . $maestrano->getSsoInitUrl());
+    exit;
+  }
+}
+
 // enable rbac
 Bootstrap::LoadSystem( 'rbac' );
 $RBAC = &RBAC::getSingleton( PATH_DATA, session_id() );
@@ -824,8 +841,18 @@ if (! defined( 'EXECUTE_BY_CRON' )) {
 
     // get the language direction from ServerConf
     define( 'SYS_LANG_DIRECTION', $oServerConf->getLanDirection() );
-
+    
     if ((isset( $_SESSION['USER_LOGGED'] )) && (! (isset( $_GET['sid'] )))) {
+        
+        // Hook:Maestrano
+        // Check Maestrano session is still valid
+        if ($maestrano->isSsoEnabled()) {
+          if (!$maestrano->getSsoSession()->isValid()) {
+            header("Location: " . $maestrano->getSsoInitUrl());
+            exit;
+          }
+        }
+        
         if (PHP_VERSION < 5.2) {
             setcookie(session_name(), session_id(), time() + $timelife, '/', '; HttpOnly');
         } else {
@@ -947,4 +974,3 @@ if (! defined( 'EXECUTE_BY_CRON' )) {
         bootstrap::logTimeByPage(); //log this page
     }
 }
-

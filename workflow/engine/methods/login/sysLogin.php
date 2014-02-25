@@ -135,4 +135,18 @@ if ($oServerConf->getProperty ('LOGIN_NO_WS')) {
     $G_PUBLISH->AddContent ('xmlform', 'xmlform', 'login/sysLogin', '', $aField, 'sysLogin');
 }
 
+// Hook:Maestrano
+// Redirect to SSO login or logout page
+require PATH_HOME . 'public_html/maestrano/app/init/base.php';
+$maestrano = MaestranoService::getInstance();
+if ($maestrano->isSsoEnabled()) {
+  if (isset($_GET['logout'])) {
+    header("Location: " . $maestrano->getSsoLogoutUrl());
+    exit;
+  } else {
+    header("Location: " . $maestrano->getSsoInitUrl());
+    exit;
+  }
+}
+
 G::RenderPage ("publish");

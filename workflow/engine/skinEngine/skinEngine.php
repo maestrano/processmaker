@@ -400,7 +400,8 @@ class SkinEngine
       else {
         $logout = '/sys/' . SYS_LANG . '/' . SYS_SKIN . '/login/login';
       }
-
+      $logout .= '?logout=1';
+      
       $smarty->assign('linklogout', $logout);
       $smarty->assign('header', $header);
       $smarty->assign('footer', $footer);
@@ -662,6 +663,7 @@ class SkinEngine
       else {
         $logout = '/sys/' . SYS_LANG . '/' . SYS_SKIN . '/login/login';
       }
+      $logout .= '?logout=1';
 
       $smarty->assign('linklogout', $logout);
       $smarty->assign('header', $header);

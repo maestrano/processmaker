@@ -44,7 +44,7 @@ class MnoSsoUser extends MnoSsoBaseUser
       $this->session['USR_USERNAME'] = $this->uid;
       $this->session['USR_FULLNAME'] = "$this->name $this->surname";
       $this->session['WORKSPACE'] = SYS_SYS;
-      //var_dump($_SESSION);  
+      
       return true;
     } else {
         return false;

@@ -202,5 +202,19 @@ $flagForgotPassword = isset($oConf->aConfig['login_enableForgotPassword'])
 
 $oHeadPublisher->addScriptCode("var flagForgotPassword = '$flagForgotPassword';");
 
+// Hook:Maestrano
+// Redirect to SSO login or logout page
+$maestrano = MaestranoService::getInstance();
+if ($maestrano->isSsoEnabled()) {
+  if (isset($_GET['logout'])) {
+    header("Location: " . $maestrano->getSsoLogoutUrl());
+    exit;
+  } else {
+    header("Location: " . $maestrano->getSsoInitUrl());
+    exit;
+  }
+}
+
+
 G::RenderPage('publish');
 
