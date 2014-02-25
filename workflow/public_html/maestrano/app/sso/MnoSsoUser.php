@@ -7,10 +7,10 @@
 class MnoSsoUser extends MnoSsoBaseUser
 {
   /**
-   * Database connection
+   * ProcessMaker User Management Service
    * @var PDO
    */
-  public $connection = null;
+  public $rbac = null;
   
   
   /**
@@ -26,7 +26,7 @@ class MnoSsoUser extends MnoSsoBaseUser
     parent::__construct($saml_response,$session);
     
     // Assign new attributes
-    $this->connection = $opts['db_connection'];
+    $this->rbac = $opts['rbac'];
   }
   
   
@@ -37,29 +37,19 @@ class MnoSsoUser extends MnoSsoBaseUser
    *
    * @return boolean whether the user was successfully set in session or not
    */
-  // protected function setInSession()
-  // {
-  //   // First set $conn variable (need global variable?)
-  //   $conn = $this->connection;
-  //   
-  //   $sel1 = $conn->query("SELECT ID,name,lastlogin FROM user WHERE ID = $this->local_id");
-  //   $chk = $sel1->fetch();
-  //   if ($chk["ID"] != "") {
-  //       $now = time();
-  //       
-  //       // Set session
-  //       $this->session['userid'] = $chk['ID'];
-  //       $this->session['username'] = stripslashes($chk['name']);
-  //       $this->session['lastlogin'] = $now;
-  //       
-  //       // Update last login timestamp
-  //       $upd1 = $conn->query("UPDATE user SET lastlogin = '$now' WHERE ID = $this->local_id");
-  //       
-  //       return true;
-  //   } else {
-  //       return false;
-  //   }
-  // }
+  protected function setInSession()
+  {
+    if ($this->local_id) {
+      $this->session['USER_LOGGED']  = $this->local_id;
+      $this->session['USR_USERNAME'] = $this->uid;
+      $this->session['USR_FULLNAME'] = "$this->name $this->surname";
+      $this->session['WORKSPACE'] = SYS_SYS;
+      //var_dump($_SESSION);  
+      return true;
+    } else {
+        return false;
+    }
+  }
   
   
   /**
@@ -69,52 +59,141 @@ class MnoSsoUser extends MnoSsoBaseUser
    *
    * @return the ID of the user created, null otherwise
    */
-  // protected function createLocalUser()
-  // {
-  //   $lid = null;
-  //   
-  //   if ($this->accessScope() == 'private') {
-  //     // First set $conn variable (need global variable?)
-  //     $conn = $this->connection;
-  //     
-  //     // Create user
-  //     $lid = $this->connection->query("CREATE BLA.....");
-  //   }
-  //   
-  //   return $lid;
-  // }
+  protected function createLocalUser()
+  {
+    $lid = null;
+    
+    if ($this->accessScope() == 'private') {
+      // First create the RBAC user (Security user)
+      $rbac_user = $this->buildLocalRbacUser();
+      $rbac_role = $this->getRoleIdToAssign();
+      $lid = $this->rbac->createUser($rbac_user, $rbac_role);
+      
+      // Then create the regular user (Worflow user)
+      // Create user
+      $regular_user = $this->buildLocalRegularUser($lid);
+      $user = new Users();
+      $user->create( $regular_user );
+    }
+    
+    return $lid;
+  }
+  
+  /**
+   * Return a normal user for creation (worflow user)
+   *
+   * @return a hash of attributes
+   */
+  protected function buildLocalRegularUser($rbac_user_id)
+  {
+    $data = $this->buildLocalRbacUser();
+    
+    $data['USR_STATUS'] = 'ACTIVE';
+    $data['USR_UID'] = $rbac_user_id;
+    $data['USR_PASSWORD'] = md5( $rbac_user_id ); //fake
+    $data['USR_ROLE'] = $this->getRoleIdToAssign();
+    
+    return $data;
+  }
+  
+  /**
+   * Return a rbac user for creation (security user)
+   *
+   * @return a hash of attributes
+   */
+  protected function buildLocalRbacUser()
+  {
+    $data = Array(
+      'USR_USERNAME'   => $this->uid,
+      'USR_PASSWORD'   => md5($this->generatePassword()),
+      'USR_FIRSTNAME'   => $this->name,
+      'USR_LASTNAME'    => $this->surname,
+      'USR_EMAIL'       => $this->email,
+      'USR_DUE_DATE'    => date( 'Y-m-d', mktime( 0, 0, 0, date( 'm' ), date( 'd' ), date( 'Y' ) + 2 ) ),
+      'USR_CREATE_DATE' => date( 'Y-m-d H:i:s' ),
+      'USR_UPDATE_DATE' => date( 'Y-m-d H:i:s' ),
+      'USR_BIRTHDAY'    => date( 'Y-m-d' ),
+      'USR_STATUS'      => 1,
+      'USR_AUTH_TYPE'   => '',
+      'UID_AUTH_SOURCE' => '',
+      'USR_AUTH_USER_DN' => '',
+      
+    );
+    return $data;
+  }
+  
+  /**
+   * Get the role to give to the user based on context
+   * If the user is the owner of the app or at least Admin
+   * for each organization, then it is given the role of 'Admin'.
+   * Return 'User' role otherwise
+   *
+   * @return the ID of the user created, null otherwise
+   */
+  public function getRoleIdToAssign() 
+  {
+    $role_id = 'PROCESSMAKER_OPERATOR'; // User
+    
+    if ($this->app_owner) {
+      $role_id = 'PROCESSMAKER_ADMIN'; // Admin
+    } else {
+      foreach ($this->organizations as $organization) {
+        if ($organization['role'] == 'Admin' || $organization['role'] == 'Super Admin') {
+          $role_id = 'PROCESSMAKER_ADMIN';
+        } else {
+          $role_id = 'PROCESSMAKER_OPERATOR';
+        }
+      }
+    }
+    
+    return $role_id;
+  }
   
   /**
    * Get the ID of a local user via Maestrano UID lookup
    *
    * @return a user ID if found, null otherwise
    */
-  // protected function getLocalIdByUid()
-  // {
-  //   $result = $this->connection->query("SELECT ID FROM user WHERE mno_uid = {$this->connection->quote($this->uid)} LIMIT 1")->fetch();
-  //   
-  //   if ($result && $result['ID']) {
-  //     return $result['ID'];
-  //   }
-  //   
-  //   return null;
-  // }
+  protected function getLocalIdByUid()
+  {
+    $arg = mysqli_real_escape_string($this->uid);
+    
+    $conn = Propel::getConnection( RbacUsersPeer::DATABASE_NAME );
+    $sql = "SELECT USR_UID FROM USERS WHERE mno_uid = '$arg' LIMIT 1";
+    $stmt = $conn->createStatement();
+    $rs = $stmt->executeQuery($sql, ResultSet::FETCHMODE_ASSOC);
+    $rs->next();
+    $row = $rs->getRow();
+    
+    if ($result && $result['USR_UID']) {
+      return $result['USR_UID'];
+    }
+    
+    return null;
+  }
   
   /**
    * Get the ID of a local user via email lookup
    *
    * @return a user ID if found, null otherwise
    */
-  // protected function getLocalIdByEmail()
-  // {
-  //   $result = $this->connection->query("SELECT ID FROM user WHERE email = {$this->connection->quote($this->email)} LIMIT 1")->fetch();
-  //   
-  //   if ($result && $result['ID']) {
-  //     return $result['ID'];
-  //   }
-  //   
-  //   return null;
-  // }
+  protected function getLocalIdByEmail()
+  {
+    $arg = mysqli_real_escape_string($this->email);
+    
+    $conn = Propel::getConnection( RbacUsersPeer::DATABASE_NAME );
+    $sql = "SELECT USR_UID FROM USERS WHERE USR_EMAIL = '$arg' LIMIT 1";
+    $stmt = $conn->createStatement();
+    $rs = $stmt->executeQuery($sql, ResultSet::FETCHMODE_ASSOC);
+    $rs->next();
+    $row = $rs->getRow();
+    
+    if ($result && $result['USR_UID']) {
+      return $result['USR_UID'];
+    }
+    
+    return null;
+  }
   
   /**
    * Set all 'soft' details on the user (like name, surname, email)
@@ -122,28 +201,62 @@ class MnoSsoUser extends MnoSsoBaseUser
    *
    * @return boolean whether the user was synced or not
    */
-   // protected function syncLocalDetails()
-   // {
-   //   if($this->local_id) {
-   //     $upd = $this->connection->query("UPDATE user SET name = {$this->connection->quote($this->name . ' ' . $this->surname)}, email = {$this->connection->quote($this->email)} WHERE ID = $this->local_id");
-   //     return $upd;
-   //   }
-   //   
-   //   return false;
-   // }
+   protected function syncLocalDetails()
+   {
+     if($this->local_id) {
+       $data = Array(
+         'username' => addslashes($this->uid),
+         'name' => addslashes($this->name),
+         'surname' => addslashes($this->surname),
+         'email' => addslashes($this->email),
+         'id' => addslashes($this->local_id),
+       );
+       
+       $sql = "UPDATE USERS SET
+         USR_USERNAME = '" . $data['username'] . "',
+         USR_FIRSTNAME = '" . $data['name'] . "',
+         USR_LASTNAME = '" . $data['surname'] . "',
+         USR_EMAIL = '" . $data['email'] . "'
+         WHERE USR_UID = '" . $data['id'] . "'";
+       
+       $upd = true;
+      
+      
+       foreach( Array(RbacUsersPeer::DATABASE_NAME, UsersPeer::DATABASE_NAME) as $db_name ) {
+         $conn = Propel::getConnection( $db_name );
+         $upd = $conn->executeUpdate($sql) && $upd;
+       }
+       
+       return $upd;
+     }
+     
+     return false;
+   }
   
   /**
    * Set the Maestrano UID on a local user via id lookup
    *
    * @return a user ID if found, null otherwise
    */
-  // protected function setLocalUid()
-  // {
-  //   if($this->local_id) {
-  //     $upd = $this->connection->query("UPDATE user SET mno_uid = {$this->connection->quote($this->uid)} WHERE ID = $this->local_id");
-  //     return $upd;
-  //   }
-  //   
-  //   return false;
-  // }
+  protected function setLocalUid()
+  {
+    if($this->local_id) {
+      
+      $data = Array(
+        'mno_uid' => addslashes($this->uid),
+        'id' => addslashes($this->local_id),
+      );
+      
+      $sql = "UPDATE USERS SET
+        mno_uid = '" . $data['mno_uid'] . "'
+        WHERE USR_UID = '" . $data['id'] . "'";
+      
+      $conn = Propel::getConnection( RbacUsersPeer::DATABASE_NAME );
+      $upd = $conn->executeUpdate($sql);
+      
+      return $upd;
+    }
+    
+    return false;
+  }
 }
