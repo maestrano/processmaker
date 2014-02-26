@@ -74,9 +74,6 @@ function transactionLog($transactionName){
 // Defining the PATH_SEP constant, he we are defining if the the path separator symbol will be '\\' or '/'
 define( 'PATH_SEP', '/' );
 
-// Force document root path for MAMP
-$_SERVER['DOCUMENT_ROOT'] = '/Users/arnaudlachaume/Sites/apache-hosts/processmaker/workflow/public_html';
-
 // Defining the Home Directory
 $realdocuroot = str_replace( '\\', '/', $_SERVER['DOCUMENT_ROOT'] );
 $docuroot = explode( PATH_SEP, $realdocuroot );
